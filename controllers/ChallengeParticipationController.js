@@ -1,8 +1,9 @@
 const ChallengeParticipation = require('../models/ChallengeParticipation');
 const Challenge = require('../models/Challenge');
 
-// Join a challenge
+// Join a challenge - optimized
 const joinChallenge = async (req, res) => {
+  console.log("Join Challenge called:", req.body);
   const { challengeId, userId } = req.body;
 
   if (!challengeId || !userId) {
@@ -15,21 +16,54 @@ const joinChallenge = async (req, res) => {
       return res.status(404).json({ message: "Challenge not found" });
     }
 
-    const existingParticipation = await ChallengeParticipation.findOne({ user: userId, challenge: challengeId });
+    const existingParticipation = await ChallengeParticipation.findOne({
+      user: userId,
+      challenge: challengeId
+    });
+
+    // Handle existing participation based on its status
     if (existingParticipation) {
-      return res.status(200).json({
-        message: "Already participating in this challenge",
-        participation: existingParticipation
-      });
+      if (existingParticipation.status === 'active') {
+        console.log(`User ${userId} already active in challenge ${challengeId}`);
+        return res.status(200).json({
+          message: "Already participating in this challenge",
+          participation: existingParticipation
+        });
+      } else if (existingParticipation.status === 'inactive' || existingParticipation.status === 'abandoned') {
+        console.log(`User ${userId} rejoining challenge ${challengeId}`);
+
+        // Reactivate the participation and reset progress values
+        existingParticipation.status = 'active';
+        existingParticipation.progress = 0;
+        existingParticipation.activities = [];
+        existingParticipation.carbonSaved = 0;
+
+        await existingParticipation.save();
+
+        // Increment participant count in the challenge
+        await Challenge.findByIdAndUpdate(challengeId, {
+          $inc: { participantCount: 1 }
+        });
+
+        return res.status(200).json({
+          message: "Successfully rejoined challenge",
+          participation: existingParticipation
+        });
+      }
     }
 
-    // Create new participation entry
+    // Create new participation entry if no existing entry was found
+    console.log(`User ${userId} creating new participation in challenge ${challengeId}`);
     const participation = new ChallengeParticipation({
       user: userId,
       challenge: challengeId,
-      status: 'active'
+      status: 'active',
+      progress: 0,
+      activities: [],
+      carbonSaved: 0
     });
-    await participation.save();
+
+    const savedParticipation = await participation.save();
 
     // Increment participant count in the challenge
     await Challenge.findByIdAndUpdate(challengeId, {
@@ -38,16 +72,20 @@ const joinChallenge = async (req, res) => {
 
     return res.status(201).json({
       message: "Successfully joined challenge",
-      participation
+      participation: savedParticipation
     });
   } catch (error) {
-    console.error("Error joining challenge:", error);
-    return res.status(500).json({ message: "Server error", error: error.message });
+    console.error("Error joining challenge:", error.message);
+    return res.status(500).json({
+      message: "Server error",
+      error: error.message
+    });
   }
 };
 
-// Leave a challenge
+// Leave a challenge - optimized
 const leaveChallenge = async (req, res) => {
+  console.log("Leave Challenge called:", req.params);
   const { challengeId, userId } = req.params;
 
   if (!challengeId || !userId) {
@@ -64,23 +102,34 @@ const leaveChallenge = async (req, res) => {
       return res.status(404).json({ message: "Not participating in this challenge" });
     }
 
-    // Mark as inactive instead of deleting
-    participation.status = 'inactive';
-    await participation.save();
+    // Only decrement participant count if the status was active
+    if (participation.status === 'active') {
+      console.log(`User ${userId} leaving active challenge ${challengeId}`);
 
-    // Fetch current participant count
-    const challenge = await Challenge.findById(challengeId);
+      // Mark as inactive
+      participation.status = 'inactive';
+      await participation.save();
 
-    if (challenge.participantCount > 0) {
+      // Decrement participant count in the challenge
       await Challenge.findByIdAndUpdate(challengeId, {
         $inc: { participantCount: -1 }
       });
+    } else {
+      console.log(`User ${userId} leaving already inactive challenge ${challengeId}`);
+      participation.status = 'inactive';
+      await participation.save();
     }
 
-    return res.status(200).json({ message: "Left the challenge" });
+    return res.status(200).json({
+      message: "Left the challenge",
+      participationStatus: participation.status
+    });
   } catch (error) {
-    console.error("Error leaving challenge:", error);
-    return res.status(500).json({ message: "Server error", error: error.message });
+    console.error("Error leaving challenge:", error.message);
+    return res.status(500).json({
+      message: "Server error",
+      error: error.message
+    });
   }
 };
 
