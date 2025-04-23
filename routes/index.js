@@ -14,7 +14,7 @@ router.use('/challenges', challengeRoutes);
 router.use('/organizations', organizationRoutes);
 router.use('/categories', categoryRoutes);
 router.use('/admin', adminRoutes);
-// router.use('/challengeParticipations', challengeParticipationRoutes);
+router.use('/challengeParticipations', challengeParticipationRoutes);
 router.use('/chat', chatbotRoutes);
 
 module.exports = router;

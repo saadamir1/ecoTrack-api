@@ -7,7 +7,7 @@ const {
   updateProgress,
   getUserChallenges,
   getChallengeParticipants
-} = require('../controllers/challengeParticipationController');
+} = require('../controllers/ChallengeParticipationController');
 
 router.post('/join', joinChallenge);
 router.put('/leave/:challengeId/:userId', leaveChallenge);
