@@ -166,7 +166,9 @@ const getChallengeById = async (req, res) => {
     const { challengeId } = req.params;
 
     try {
-        const challenge = await Challenge.findById(challengeId).populate('organization');
+        const challenge = await Challenge.findById(challengeId)
+            .populate('organization')
+            .populate('category');
         if (!challenge) {
             return res.status(404).json({ message: 'Challenge not found' });
         }
