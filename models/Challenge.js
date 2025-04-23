@@ -1,54 +1,63 @@
 const mongoose = require('mongoose');
 
-const challengeSchema = new mongoose.Schema({
+const ChallengeSchema = new mongoose.Schema({
     title: { type: String, required: true },
-    organization: { type: mongoose.Schema.Types.ObjectId, ref: 'Organization', required: true },
-    challengeId: { type: String }, // Will be auto-generated
-    category: { type: mongoose.Schema.Types.ObjectId, ref: 'Category', required: true },
-    difficulty: { type: String, enum: ['Easy', 'Medium', 'Hard', 'Expert'] },
-    type: { type: String, enum: ['Individual', 'Group', 'Community'] },
-    environmentalImpact: [{ type: String }],
-    duration: { type: String },
-    points: { type: Number, required: true },
-    impact: {
-        carbonReduction: { type: Number },
-        waterSaved: { type: Number },
-        energySaved: { type: Number },
-        wastePrevented: { type: Number }
-    },
-    status: { type: String, enum: ['Upcoming', 'Active', 'Completed'] },
-    images: [{ type: String, required: true }],
-    targetAudience: { type: String },
-    description: { type: String },
-    tags: [{ type: String }],
-    popularityIndex: { type: Number, default: 0 },
+    slug: { type: String, required: true, unique: true },
+    description: { type: String, required: true },
     startDate: { type: Date, required: true },
     endDate: { type: Date, required: true },
-    participantCount: { type: Number, default: 0 }
+    category: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Category'
+    },
+    difficulty: {
+        type: String,
+        enum: ['Easy', 'Medium', 'Hard', 'Expert'],
+        default: 'Medium'
+    },
+    points: { type: Number, default: 10 },
+    participantCount: { type: Number, default: 0 },
+    status: {
+        type: String,
+        enum: ['Draft', 'Active', 'Completed', 'Archived'],
+        default: 'Active'
+    },
+    images: [{ type: String }],
+    tags: [{ type: String }],
+    organization: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Organization'
+    },
+    environmentalImpact: [{ type: String }],
+
+    // New fields to support activity tracking
+    targetImpact: {
+        type: Number,
+        default: 100,
+        description: "Target carbon impact in kg to complete the challenge"
+    },
+    activityTypes: [{
+        name: { type: String },
+        unit: { type: String },
+        impactPerUnit: { type: Number },
+        description: { type: String }
+    }],
+    milestones: [{
+        percentage: { type: Number },
+        description: { type: String },
+        reward: { type: String }
+    }]
 }, { timestamps: true });
 
-// Indexing
-challengeSchema.index({ challengeId: 1, organization: 1 }, { unique: true });
-challengeSchema.index({ category: 1, points: 1 });
-challengeSchema.index({ title: 'text', tags: 'text' });
-
-// Virtual field to create 'id' based on '_id'
-challengeSchema.virtual('id').get(function () {
-    return this._id.toHexString();
-});
-
-// Ensure virtual fields are included when converting to JSON
-challengeSchema.set('toJSON', {
-    virtuals: true
-});
-
-challengeSchema.pre('save', function (next) {
-    if (this.isNew) {
-        const organizationPrefix = this.organization.slice(0, 2).toUpperCase();
-        this.challengeId = `${organizationPrefix}_${this._id}`;
+ChallengeSchema.pre('save', function (next) {
+    // Create a slug from the title if not provided
+    if (!this.slug) {
+        this.slug = this.title
+            .toLowerCase()
+            .replace(/[^\w ]+/g, '')
+            .replace(/ +/g, '-');
     }
     next();
 });
 
-const Challenge = mongoose.model('Challenge', challengeSchema);
-module.exports = Challenge;
+module.exports = mongoose.model('Challenge', ChallengeSchema);
