@@ -27,7 +27,7 @@ const joinChallenge = async (req, res) => {
     const participation = new ChallengeParticipation({
       user: userId,
       challenge: challengeId,
-      status: 'joined'
+      status: 'active'
     });
     await participation.save();
 
@@ -64,14 +64,18 @@ const leaveChallenge = async (req, res) => {
       return res.status(404).json({ message: "Not participating in this challenge" });
     }
 
-    // Mark as abandoned instead of deleting
-    participation.status = 'abandoned';
+    // Mark as inactive instead of deleting
+    participation.status = 'inactive';
     await participation.save();
 
-    // Decrement participant count in the challenge
-    await Challenge.findByIdAndUpdate(challengeId, {
-      $inc: { participantCount: -1 }
-    });
+    // Fetch current participant count
+    const challenge = await Challenge.findById(challengeId);
+
+    if (challenge.participantCount > 0) {
+      await Challenge.findByIdAndUpdate(challengeId, {
+        $inc: { participantCount: -1 }
+      });
+    }
 
     return res.status(200).json({ message: "Left the challenge" });
   } catch (error) {
@@ -79,6 +83,7 @@ const leaveChallenge = async (req, res) => {
     return res.status(500).json({ message: "Server error", error: error.message });
   }
 };
+
 
 // Update challenge progress
 const updateProgress = async (req, res) => {
