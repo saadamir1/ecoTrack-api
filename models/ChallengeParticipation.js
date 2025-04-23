@@ -3,7 +3,7 @@ const mongoose = require('mongoose');
 const ChallengeParticipationSchema = new mongoose.Schema({
   user: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
   challenge: { type: mongoose.Schema.Types.ObjectId, ref: "Challenge", required: true },
-  status: { type: String, enum: ['joined', 'in-progress', 'completed', 'abandoned'], default: 'joined' },
+  status: { type: String, enum: ['active', 'inactive', 'completed'], default: 'joined' },
   progress: { type: Number, default: 0 }, // Percentage of completion
   carbonSaved: { type: Number, default: 0 }, // Carbon saved in grams
   activities: [{
