@@ -2,7 +2,7 @@ const mongoose = require('mongoose');
 
 const ChallengeSchema = new mongoose.Schema({
     title: { type: String, required: true },
-    slug: { type: String, required: true, unique: true },
+    slug: { type: String, unique: true },
     description: { type: String, required: true },
     startDate: { type: Date, required: true },
     endDate: { type: Date, required: true },
