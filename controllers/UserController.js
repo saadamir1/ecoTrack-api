@@ -6,50 +6,6 @@ const Organization = require('../models/Organization');
 
 const SECRET_KEY = process.env.JWT_SECRET || "my_secret_key"; // Use env variable for security
 
-// **Register User**
-const registerUser = async (req, res) => {
-    try {
-        console.log("Registering user...");
-        console.log(req.body);
-        const { firstName, lastName, email, password } = req.body;
-
-        // Check if email already exists under 'user' role
-        const existingUser = await User.findOne({ email, role: 'user' });
-        if (existingUser) {
-            return res.status(400).json({ message: "Email already registered as a user." });
-        }
-
-        // Hash the password
-        const passwordHash = await bcrypt.hash(password, 10);
-
-        // Create an empty profile with only firstName and lastName
-        const profile = await Profile.create({
-            firstName,
-            lastName,
-            gender: "",
-            age: null,
-            measurements: { height: null, weight: null, chest: null, waist: null },
-            preferences: { style: "", sustainability: false, size: "", color: "", challengeParticipationOrganizations: [], fitPreference: "" }
-        });
-
-        // Create the user and link it to the profile
-        const user = await User.create({
-            username: email.split('@')[0], // Extract username from email
-            email,
-            passwordHash,
-            role: 'user',
-            userProfile: profile._id // Link profile to user
-        });
-        // Generate JWT Token
-        const token = jwt.sign({ userId: user._id, role: user.role }, SECRET_KEY, { expiresIn: '7d' });
-
-        res.status(201).json({ message: "User registered successfully", token, user });
-    } catch (error) {
-        console.error("Registration Error:", error);
-        res.status(500).json({ message: "Registration failed", error: error.message });
-    }
-};
-
 const slugify = async (text, Organization) => {
     const baseSlug = text
         .toString()
@@ -72,20 +28,76 @@ const slugify = async (text, Organization) => {
 
     return slug;
 };
+// **Register User**
+const registerUser = async (req, res) => {
+    try {
+        console.log("Registering user...");
+        console.log(req.body);
+        const { firstName, lastName, email, password } = req.body;
+
+        // Check if email already exists under 'user' role
+        const existingUser = await User.findOne({ email, role: 'user' });
+        if (existingUser) {
+            return res.status(400).json({ message: "Email already registered as a user." });
+        }
+
+        // Hash the password
+        const passwordHash = await bcrypt.hash(password, 10);
+
+        // Create a user profile with provided information
+        const profile = await Profile.create({
+            firstName,
+            lastName,
+            gender: "",
+            age: null,
+            location: "",
+            sustainabilityPreferences: {
+                dietType: "omnivore",
+                transportationMode: "mixed",
+                energyConservation: false,
+                wasteReduction: false
+            }
+        });
+
+        // Create the user and link it to the profile
+        const user = await User.create({
+            username: email.split('@')[0], // Extract username from email
+            email,
+            passwordHash,
+            role: 'user',
+            userProfile: profile._id // Link profile to user
+        });
+
+        // Generate JWT Token
+        const token = jwt.sign({ userId: user._id, role: user.role }, SECRET_KEY, { expiresIn: '7d' });
+
+        // Return user with populated profile
+        const populatedUser = await User.findById(user._id).populate('userProfile');
+
+        res.status(201).json({
+            message: "User registered successfully",
+            token,
+            user: populatedUser
+        });
+    } catch (error) {
+        console.error("Registration Error:", error);
+        res.status(500).json({ message: "Registration failed", error: error.message });
+    }
+};
 
 const registerOrganization = async (req, res) => {
     try {
         console.log("Registering organization...");
         console.log(req.body);
 
-        // Destructure the correct fields from the request body
-        const { organizationName, email, password, description, website, logoUrl } = req.body;
+        // Destructure fields from the request body
+        const { organizationName, email, password, description, website, logoUrl, type = 'business' } = req.body;
         const name = organizationName; // frontend sends 'organizationName' instead of 'name'
 
         // Check if email already exists under 'organization' role
         const existingOrganization = await User.findOne({ email, role: 'organization' });
         if (existingOrganization) {
-            return res.status(400).json({ message: "Email already registered as a organization." });
+            return res.status(400).json({ message: "Email already registered as an organization." });
         }
 
         // Hash the password
@@ -94,16 +106,17 @@ const registerOrganization = async (req, res) => {
         // Generate unique slug from organization name
         const slug = await slugify(name, Organization);
 
-        // Create an empty organization profile
+        // Create an organization profile
         const organizationProfile = await Organization.create({
-            name, // Use 'name' from the request body
-            description, // Use the description from the request body
-            website, // Use the website from the request body
-            logoUrl: logoUrl, // Use the logoUrl from the request body
-            socialLinks: [],
-            categories: [],
-            sustainabilityFocus: false,
-            slug: slug
+            name,
+            description,
+            website,
+            logoUrl,
+            type,
+            sustainabilityFocus: [],
+            members: [],
+            challenges: [],
+            slug
         });
 
         // Create the organization user and link to profile
@@ -118,7 +131,14 @@ const registerOrganization = async (req, res) => {
         // Generate JWT Token
         const token = jwt.sign({ userId: organizationUser._id, role: organizationUser.role }, SECRET_KEY, { expiresIn: '7d' });
 
-        res.status(201).json({ message: "Organization registered successfully", token, organizationUser });
+        // Return user with populated organization profile
+        const populatedOrgUser = await User.findById(organizationUser._id).populate('organizationProfile');
+
+        res.status(201).json({
+            message: "Organization registered successfully",
+            token,
+            user: populatedOrgUser
+        });
     } catch (error) {
         console.error("Organization Registration Error:", error);
         res.status(500).json({ message: "Organization registration failed", error: error.message });
@@ -128,11 +148,11 @@ const registerOrganization = async (req, res) => {
 // **Login (For both User & Organization)**
 const login = async (req, res) => {
     try {
-        const { loginIdentifier, password, isSeller = false } = req.body; // loginIdentifier = email or username || default login type: user
+        const { loginIdentifier, password, isSeller = false } = req.body; // loginIdentifier = email or username
         const role = isSeller ? 'organization' : 'user';
 
         // Find user by email or username and role
-        const user = await User.findOne({
+        let user = await User.findOne({
             $or: [{ email: loginIdentifier }, { username: loginIdentifier }],
             role
         });
@@ -145,6 +165,13 @@ const login = async (req, res) => {
         const isMatch = await bcrypt.compare(password, user.passwordHash);
         if (!isMatch) {
             return res.status(400).json({ message: "Invalid credentials" });
+        }
+
+        // Populate the correct profile based on role
+        if (role === 'organization') {
+            user = await User.findById(user._id).populate('organizationProfile');
+        } else {
+            user = await User.findById(user._id).populate('userProfile');
         }
 
         // Generate JWT Token
